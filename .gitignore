@@ -1,0 +1,25 @@
+# Secrets and local environment
+.env
+.env.*
+.streamlit/secrets.toml
+config/users.yml
+
+# Runtime data: encrypted vaults, memory, logs, backups, uploads
+data/*.enc
+data/site_memory.json
+data/audit_log.jsonl
+data/activity_log.jsonl
+data/usage_analytics.jsonl
+data/backups/
+data/uploads/
+data/.environment_ready.json
+logs/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

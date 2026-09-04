@@ -1,0 +1,65 @@
+services:
+  db:
+    image: mariadb:11
+    environment:
+      MYSQL_DATABASE: wordpress_test
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress
+      MYSQL_ROOT_PASSWORD: root
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "3307:3306"
+
+  wordpress:
+    image: wordpress:php8.2-apache
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: wordpress_test
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DEBUG: "1"
+    ports:
+      - "8080:80"
+    volumes:
+      - wordpress_test_data:/var/www/html
+
+  wpcli:
+    image: wordpress:cli-php8.2
+    depends_on:
+      - wordpress
+    user: "33:33"
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: wordpress_test
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+    volumes:
+      - wordpress_test_data:/var/www/html
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "
+      until wp core is-installed --path=/var/www/html; do
+        wp core install
+          --path=/var/www/html
+          --url=http://localhost:8080
+          --title='WordPressGenius Test'
+          --admin_user=admin
+          --admin_password=adminpass
+          --admin_email=admin@example.test
+          --skip-email || true;
+        sleep 5;
+      done;
+      wp plugin install woocommerce --activate --path=/var/www/html;
+      wp user application-password create admin WordPressGeniusTest --porcelain --path=/var/www/html || true;
+      wp option update blog_public 0 --path=/var/www/html;
+      "
+
+volumes:
+  wordpress_test_data:

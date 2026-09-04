@@ -1,0 +1,13 @@
+# Copy to config/users.yml and change passwords before enabling AUTH_ENABLED.
+# Generate password hashes with:
+#   python -c "from core.security import hash_password; print(hash_password('change-me'))"
+users:
+  admin:
+    password_sha256: e2186dbdb1bb4193608605e84f33208765b5693b55edd4f730a719a100eeea6f
+    role: admin
+  editor:
+    password_sha256: e2186dbdb1bb4193608605e84f33208765b5693b55edd4f730a719a100eeea6f
+    role: editor
+  viewer:
+    password_sha256: e2186dbdb1bb4193608605e84f33208765b5693b55edd4f730a719a100eeea6f
+    role: viewer
