@@ -1,5 +1,7 @@
 # WordPressGenius
 
+> Operate WordPress and WooCommerce from chat. Drafts are free. Publishes, deletes, and refunds wait for approval and a JSON backup.
+
 WordPressGenius is a LangGraph multi-agent operator for WordPress and WooCommerce. You chat in plain English. It plans the work, drafts the content, and asks before it touches anything live. Drafts are free. Publishes, updates, deletes, settings, plugin changes, and refunds wait for explicit approval. Before a gated write runs, it saves a JSON snapshot of whatever it is about to change.
 
 ## Clone
