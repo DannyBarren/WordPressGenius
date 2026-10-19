@@ -34,6 +34,7 @@ RUNTIME_IMPORTS: tuple[tuple[str, str], ...] = (
     ("cryptography", "cryptography"),
     ("yaml", "PyYAML"),
     ("sentry_sdk", "sentry-sdk"),
+    ("argon2", "argon2-cffi"),
 )
 
 READINESS_TEST_TARGETS = (
@@ -247,11 +248,16 @@ def _prepare_runtime_directories(log: Callable[[str], None]) -> None:
         path.mkdir(parents=True, exist_ok=True)
         log(f"  {path}")
 
-    env_example = PROJECT_ROOT / "config" / ".env.example"
     env_file = PROJECT_ROOT / ".env"
-    if env_example.exists() and not env_file.exists():
-        env_file.write_text(env_example.read_text(encoding="utf-8"), encoding="utf-8")
-        log(f"Created {env_file.name} from config/.env.example")
+    env_examples = (
+        PROJECT_ROOT / ".env.example",
+        PROJECT_ROOT / "config" / ".env.example",
+    )
+    for env_example in env_examples:
+        if env_example.exists() and not env_file.exists():
+            env_file.write_text(env_example.read_text(encoding="utf-8"), encoding="utf-8")
+            log(f"Created {env_file.name} from {env_example.relative_to(PROJECT_ROOT)}")
+            break
 
 
 def _pip_install(args: list[str], log: Callable[[str], None] | None) -> int:
