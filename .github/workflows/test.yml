@@ -23,7 +23,10 @@ jobs:
           python -m pip install -r requirements.txt
 
       - name: Compile source
-        run: python -m compileall app.py agents core tools
+        run: python -m compileall app.py agents core tools evals
 
       - name: Run tests
         run: python -m pytest -q
+
+      - name: Run golden-prompt evals
+        run: python -m evals
