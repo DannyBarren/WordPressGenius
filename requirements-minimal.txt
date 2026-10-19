@@ -1,2 +1,2 @@
-streamlit
-toml
+streamlit==1.66.0
+toml==0.10.2

@@ -1,6 +1,8 @@
 # Secrets and local environment
 .env
 .env.*
+!.env.example
+!.env.example.*
 .streamlit/secrets.toml
 config/users.yml
 

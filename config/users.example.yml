@@ -1,6 +1,10 @@
 # Copy to config/users.yml and change passwords before enabling AUTH_ENABLED.
-# Generate password hashes with:
-#   python -c "from core.security import hash_password; print(hash_password('change-me'))"
+# The documented example password is `change-me` (fake, local-only).
+# These unsalted SHA-256 hex digests still verify; the first successful login
+# upgrades that user to a salted Argon2id password_hash automatically.
+# Generate new hashes with:
+#   python -c "from core.security import hash_password; print(hash_password('your-password'))"
+# Quote the Argon2 string in YAML; it starts with $argon2id$.
 users:
   admin:
     password_sha256: e2186dbdb1bb4193608605e84f33208765b5693b55edd4f730a719a100eeea6f

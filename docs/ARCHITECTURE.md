@@ -59,11 +59,12 @@ with `approved=True`.
 - `memory.py` — `ActivityLog` (JSONL event log) and `SiteMemory` (durable
   conversation/site-event store with a dependency-free TF-IDF search). All
   writes pass through `redact()`.
-- `security.py` — `AuthManager` (YAML users, SHA-256 password hashes, app roles
-  viewer/editor/admin), `CredentialVault` (Fernet-encrypted WordPress
-  credentials per user), `SecurityAuditLog` (hash-chained JSONL with
-  `verify()`), `PromptGuard` (Unicode normalization, instruction-override and
-  mass-destruction blocking), and Fernet key helpers.
+- `security.py` — `AuthManager` (YAML users, Argon2id password hashes with a
+  legacy SHA-256 verify-and-rehash path, app roles viewer/editor/admin),
+  `CredentialVault` (Fernet-encrypted WordPress credentials per user),
+  `SecurityAuditLog` (hash-chained JSONL with `verify()`), `PromptGuard`
+  (Unicode normalization, instruction-override and mass-destruction blocking),
+  and Fernet key helpers.
 - `sites_store.py` — `SiteVault`: per-user encrypted storage of multiple saved
   WordPress sites, with an active-site pointer.
 - `settings_store.py` — `LLMSettingsStore`: encrypted on-disk LLM provider/key/
@@ -138,6 +139,11 @@ Root files: `launch.py` (starts the UI with only Python installed), `app.py`
 `environment_setup.py` (dependency install and readiness checks), `health.py`
 (FastAPI `/health` and `/ready` for containers).
 
+`evals/` is an offline golden-prompt harness. `cases.yaml` holds scripted
+planner outputs; `harness.py` runs them through `SafetyLayer`. Destructive
+actions must still require approval when the mocked model labels them low-risk.
+CI runs `python -m evals` in addition to pytest.
+
 ## SafetyLayer vs LLMRouter
 
 Safety is not the model.
@@ -189,7 +195,8 @@ graph do not change.
 
 Runtime and secret material never enters git:
 
-- `.env` and `.env.*` — local environment and API keys.
+- `.env` and `.env.*` — local environment and API keys
+  (`.env.example` is tracked).
 - `.streamlit/secrets.toml` — Streamlit secrets.
 - `config/users.yml` — real login users and password hashes
   (`config/users.example.yml` is tracked).

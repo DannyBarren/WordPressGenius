@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -15,10 +16,27 @@ from threading import Lock
 from typing import Any, Literal
 
 import yaml
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHash, VerificationError, VerifyMismatchError
 from cryptography.fernet import Fernet, InvalidToken
 
 from core.logging_config import redact
 from core.models import WordPressCredentials
+
+LOGGER = logging.getLogger(__name__)
+
+# Argon2id parameters suitable for interactive self-hosted logins.
+# memory_cost is kibibytes (64 MiB). time_cost=3 matches argon2-cffi defaults.
+_PASSWORD_HASHER = PasswordHasher(
+    time_cost=3,
+    memory_cost=65536,
+    parallelism=4,
+    hash_len=32,
+    salt_len=16,
+)
+_SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
+PASSWORD_HASH_FIELD = "password_hash"
+LEGACY_PASSWORD_HASH_FIELD = "password_sha256"
 
 
 AppRole = Literal["viewer", "editor", "admin"]
@@ -51,9 +69,13 @@ class AuthManager:
     ```yaml
     users:
       alice:
-        password_sha256: "<sha256 hex>"
+        password_hash: "<argon2id hash from hash_password()>"
         role: admin
     ```
+
+    Legacy ``password_sha256`` hex digests still verify. A successful login
+    with a legacy or stale hash rewrites that user to Argon2id
+    ``password_hash`` in place.
 
     This is intentionally simple and self-host friendly. Production SaaS should
     replace it with Auth0, Supabase, Firebase Auth, or another identity provider.
@@ -62,20 +84,26 @@ class AuthManager:
     def __init__(self, users_path: Path, *, enabled: bool = True) -> None:
         self.users_path = users_path
         self.enabled = enabled
+        self._lock = Lock()
 
     def authenticate(self, username: str, password: str) -> AuthenticatedUser | None:
         """Return an authenticated user when credentials match."""
 
         if not self.enabled:
             return AuthenticatedUser(username="local-admin", role="admin")
-        users = self._load_users()
-        record = users.get(username)
-        if not record:
-            return None
-        expected = str(record.get("password_sha256", ""))
-        supplied = hashlib.sha256(password.encode("utf-8")).hexdigest()
-        if not hmac.compare_digest(expected, supplied):
-            return None
+        with self._lock:
+            users = self._load_users()
+            record = users.get(username)
+            if not isinstance(record, dict):
+                return None
+            stored = _stored_password_hash(record)
+            if not stored or not verify_password(password, stored):
+                return None
+            if _password_record_needs_upgrade(record, stored):
+                try:
+                    self._rehash_user(username, password)
+                except OSError:
+                    LOGGER.warning("Could not upgrade stored password hash for %s", username)
         role = str(record.get("role", "viewer")).lower()
         if role not in ROLE_RANK:
             role = "viewer"
@@ -87,6 +115,33 @@ class AuthManager:
         data = yaml.safe_load(self.users_path.read_text(encoding="utf-8")) or {}
         users = data.get("users", {})
         return users if isinstance(users, dict) else {}
+
+    def _rehash_user(self, username: str, password: str) -> None:
+        """Rewrite one user's stored hash to current Argon2id parameters."""
+
+        if not self.users_path.exists():
+            return
+        data = yaml.safe_load(self.users_path.read_text(encoding="utf-8")) or {}
+        if not isinstance(data, dict):
+            return
+        users = data.get("users")
+        if not isinstance(users, dict):
+            return
+        record = users.get(username)
+        if not isinstance(record, dict):
+            return
+        record[PASSWORD_HASH_FIELD] = hash_password(password)
+        record.pop(LEGACY_PASSWORD_HASH_FIELD, None)
+        users[username] = record
+        data["users"] = users
+        serialized = yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+        tmp = self.users_path.with_name(self.users_path.name + ".tmp")
+        tmp.write_text(serialized, encoding="utf-8")
+        tmp.replace(self.users_path)
+        try:
+            self.users_path.chmod(0o600)
+        except OSError:
+            pass
 
 
 class CredentialVault:
@@ -318,9 +373,56 @@ def role_at_least(role: str, required: str) -> bool:
 
 
 def hash_password(password: str) -> str:
-    """Return a SHA-256 hash for simple self-hosted user config files."""
+    """Return an Argon2id hash for self-hosted user config files."""
 
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+    return _PASSWORD_HASHER.hash(password)
+
+
+def verify_password(password: str, stored: str) -> bool:
+    """Verify *password* against an Argon2id hash or a legacy SHA-256 hex digest."""
+
+    if not stored:
+        return False
+    if _is_argon2_hash(stored):
+        try:
+            return bool(_PASSWORD_HASHER.verify(stored, password))
+        except (VerifyMismatchError, VerificationError, InvalidHash):
+            return False
+    if _is_legacy_sha256_hash(stored):
+        supplied = hashlib.sha256(password.encode("utf-8")).hexdigest()
+        return hmac.compare_digest(stored.lower(), supplied)
+    return False
+
+
+def password_needs_rehash(stored: str) -> bool:
+    """Return True when *stored* is legacy SHA-256 or uses stale Argon2 parameters."""
+
+    if _is_legacy_sha256_hash(stored):
+        return True
+    if not _is_argon2_hash(stored):
+        return True
+    try:
+        return bool(_PASSWORD_HASHER.check_needs_rehash(stored))
+    except (InvalidHash, ValueError):
+        return True
+
+
+def _is_argon2_hash(stored: str) -> bool:
+    return stored.startswith("$argon2")
+
+
+def _is_legacy_sha256_hash(stored: str) -> bool:
+    return bool(_SHA256_HEX_RE.fullmatch(stored.lower()))
+
+
+def _stored_password_hash(record: dict[str, Any]) -> str:
+    return str(record.get(PASSWORD_HASH_FIELD) or record.get(LEGACY_PASSWORD_HASH_FIELD) or "")
+
+
+def _password_record_needs_upgrade(record: dict[str, Any], stored: str) -> bool:
+    if LEGACY_PASSWORD_HASH_FIELD in record and PASSWORD_HASH_FIELD not in record:
+        return True
+    return password_needs_rehash(stored)
 
 
 def generate_fernet_key() -> str:

@@ -172,6 +172,8 @@ Before scaling horizontally, add:
 WordPressGenius includes a self-hosted authentication foundation for small teams:
 
 - YAML-backed login users in `config/users.yml` (copy from `config/users.example.yml`).
+- Argon2id password hashes via `hash_password()`. Legacy SHA-256 hex digests
+  still verify and are rewritten to Argon2id on the next successful login.
 - App roles: `viewer`, `editor`, and `admin`.
 - Per-user WordPress credential vault encrypted with Fernet.
 - User-attributed audit log at `data/audit_log.jsonl`.
